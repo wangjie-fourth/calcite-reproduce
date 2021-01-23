@@ -12,10 +12,17 @@ public class Reproduce {
         return true;
     }
 
-    /**
-     * the SqlSimpleParser#simplifySql can filter comments,
-     * but when -- follow by variable, this comment will not be filter. But in fact, it should be filtered
-     */
+    // SqlSimpleParser.Tokenizer#nextToken() lines 401 - 423
+    // is used to recognize the sql of TokenType.ID or some keywords
+    // if a certain segment of characters is continuously composed of Token,
+    // the function of this code may be wrong
+    // E.g :
+    // (1)select * from a where price> 10.0--comment
+    // 【10.0--comment】should be recognize as TokenType.ID("10.0") and TokenType.COMMENT
+    // but it recognize as TokenType.ID("10.0--comment")
+    // (2)select * from a where column_b='/* this is not comment */'
+    // 【/* this is not comment */】should be recognize as
+    // TokenType.SQID("/* this is not comment */"), but it was not
     public static void main(String[] args) {
         SqlSimpleParser simpleParser =
                 new SqlSimpleParser("_suggest_", SqlParser.Config.DEFAULT);
@@ -23,9 +30,6 @@ public class Reproduce {
         final String originSql = "select * from a ";
         final String resultSql = "SELECT * FROM a ";
 
-        // when SqlSimpleParser.Tokenizer#nextToken() method parse sql,
-        // ignore the  "--" after 10.0, this is a comment,
-        // but Tokenizer#nextToken() does not recognize it
         {
             String sqlWithComment = originSql + "where price > 10.0-- this is comment \n"
                     + " -- comment ";
@@ -34,8 +38,7 @@ public class Reproduce {
         }
 
         {
-//            String sqlWithOutComment = originSql + "where column_b='/* this is not comment */'";
-            String sqlWithOutComment = "select * from a where column_b= '/* this is not comment */'";
+            String sqlWithOutComment = originSql + "where column_b='/* this is not comment */'";
             String actualSql = simpleParser.simplifySql(sqlWithOutComment);
             equalTo(sqlWithOutComment, actualSql, resultSql + "WHERE column_b= '/* this is not comment */'");
         }
